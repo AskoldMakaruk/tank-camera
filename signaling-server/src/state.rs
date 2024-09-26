@@ -84,7 +84,7 @@ pub fn send_message_to_operator(operator: &UserId, message: SignalEnum) -> anyho
     Ok(())
 }
 
-fn send(addr: &SocketAddr, message: SignalEnum) -> Result<(), anyhow::Error> {
+pub fn send(addr: &SocketAddr, message: SignalEnum) -> Result<(), anyhow::Error> {
     let sender = match peers().get(addr) {
         Some(x) => x,
         None => {

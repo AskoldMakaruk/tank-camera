@@ -54,8 +54,8 @@ pub async fn create_sdp_offer(peer_a: RtcPeerConnection) -> Result<String, JsVal
         .unwrap();
 
     // Set SDP Type -> Offer
-    let mut offer_obj = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
-    offer_obj.sdp(&offer_sdp);
+    let offer_obj = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
+    offer_obj.set_sdp(&offer_sdp);
 
     // Set SDP Type -> Offer
     let sld_promise = peer_a.set_local_description(&offer_obj);

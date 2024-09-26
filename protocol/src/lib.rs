@@ -3,24 +3,6 @@ use serde::{Deserialize, Serialize};
 pub const SERVER_PORT: &str = "9000";
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
-pub struct SessionID(String);
-
-impl SessionID {
-    pub fn new(inner: String) -> Self {
-        SessionID(inner)
-    }
-    pub fn inner(self) -> String {
-        self.0
-    }
-}
-
-impl From<&str> for SessionID {
-    fn from(session_id: &str) -> Self {
-        SessionID(session_id.to_string())
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct UserId(String);
 
 impl UserId {
@@ -50,47 +32,57 @@ pub enum ProtoId {
     User(UserId),
 }
 
+// event server -> client
+// command client -> server and response -> client
 #[derive(Debug, Serialize, Deserialize)]
 pub enum SignalEnum {
-    OperatorCommand(OperatorCommand),
-    UserResponse(UserResponse),
+    Start,
+    UserCommand(UserCommand),
+    UserResponse(UserMessage),
     TankCommand(TankCommand),
-    TankResponse(TankResponse),
+    TankMessage(TankMessage),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum OperatorCommand {
+pub enum UserCommand {
     Login,
-    ConnectTo(TankId, String),
+    IceOffer(TankId, String),
+    SdpOffer(TankId, String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum UserResponse {
+pub enum UserMessage {
     LoginResponse(UserId),
     CameraListGetSuccess(Vec<TankId>),
+    SdpAnswer(TankId, String),
+    IceOfferAnswer(TankId, String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum TankCommand {
     Login,
     NewCamera(TankId),
+    SdpAnswer(UserId, String),
+    IceAnswer(UserId, String),
 }
+
 #[derive(Debug, Serialize, Deserialize)]
-pub enum TankResponse {
+pub enum TankMessage {
     LoginResponse(TankId),
-    SessionAsk(String),
+    SdpConnectionOffer(UserId, String),
+    IceConnectionOffer(UserId, String),
 }
 
 impl SignalEnum {
     pub fn is_login(&self) -> bool {
         match self {
-            SignalEnum::OperatorCommand(cmd) => matches!(cmd, OperatorCommand::Login),
+            SignalEnum::UserCommand(cmd) => matches!(cmd, UserCommand::Login),
             SignalEnum::TankCommand(cmd) => matches!(cmd, TankCommand::Login),
             _ => false,
         }
     }
     pub fn is_operator(&self) -> bool {
-        matches!(self, SignalEnum::OperatorCommand(_))
+        matches!(self, SignalEnum::UserCommand(_))
     }
     pub fn is_tank(&self) -> bool {
         matches!(self, SignalEnum::TankCommand(_))

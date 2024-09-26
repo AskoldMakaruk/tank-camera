@@ -4,7 +4,7 @@ use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
-use protocol::{SignalEnum, TankCommand, TankResponse};
+use protocol::{SignalEnum, TankCommand, TankMessage};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
@@ -13,6 +13,7 @@ type SocketReadChannel = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>
 
 pub enum WebSocketCommand {
     ConnectToSignalServer(String),
+    SendSignal(SignalEnum),
 }
 pub async fn socket_cmd_thread(
     cmd_receiver: Receiver<WebSocketCommand>,
@@ -22,6 +23,8 @@ pub async fn socket_cmd_thread(
     let (ch_soc_tx, ch_soc_rx) = mpsc::channel::<SocketWriteChannel>();
     let (ch_socr_tx, ch_socr_rx) = mpsc::channel::<SocketReadChannel>();
     let (sig_tx, sig_rx) = mpsc::channel::<SignalEnum>();
+
+    let mut socket_tx2 = socket_tx.clone();
 
     let mut set = tokio::task::JoinSet::new();
 
@@ -68,6 +71,12 @@ pub async fn socket_cmd_thread(
                             let _ = socket_tx.send(Message::text(text)).await;
                         }
                     }
+                    WebSocketCommand::SendSignal(signal) => {
+                        let ser_text = serde_json::to_string(&signal);
+                        if let Ok(text) = ser_text {
+                            let _ = socket_tx.send(Message::text(text)).await;
+                        }
+                    }
                 }
             }
         }
@@ -77,13 +86,18 @@ pub async fn socket_cmd_thread(
         loop {
             if let Ok(cmd) = sig_rx.recv() {
                 match cmd {
-                    SignalEnum::TankResponse(response) => match response {
-                        TankResponse::LoginResponse(tank_id) => {
+                    SignalEnum::TankMessage(response) => match response {
+                        TankMessage::LoginResponse(tank_id) => {
                             info!("My tank id is: {0}", tank_id.inner());
                         }
-                        TankResponse::SessionAsk(data) => {
+                        TankMessage::IceConnectionOffer(id, data) => {
                             info!("receiving ICE handshake");
-                            let _ = rtc_sender.send(WebRtcEnumCommand::ReceiveIceHandshake(data));
+                            let _ =
+                                rtc_sender.send(WebRtcEnumCommand::ReceiveIceHandshake(id, data));
+                        }
+                        TankMessage::SdpConnectionOffer(id, data) => {
+                            info!("receiving SDP offer");
+                            let _ = rtc_sender.send(WebRtcEnumCommand::ReceiveSdpOffer(id, data));
                         }
                     },
 

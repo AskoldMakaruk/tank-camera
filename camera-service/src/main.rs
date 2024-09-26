@@ -67,7 +67,8 @@ async fn main() -> Result<()> {
 
     let encoder_thread = encoder_thread(fps_tx, cam_rx, vid_tx, encoder, config, width);
 
-    let _ = connection::init_connection(client_counter, vid_rx, rtc_cmd_rx).await;
+    let _ =
+        connection::init_connection(client_counter, vid_rx, rtc_cmd_rx, soc_cmd_tx.clone()).await;
     let signaling_result = signaling::socket_cmd_thread(soc_cmd_rx, rtc_cmd_tx).await;
 
     const CONNECTION: &str = "ws://127.0.0.1:9002";

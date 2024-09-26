@@ -9,7 +9,8 @@ mod websockets;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use log::info;
+use log::*;
+use protocol::*;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::UnwrapThrowExt;
 

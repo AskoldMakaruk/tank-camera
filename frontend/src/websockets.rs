@@ -2,9 +2,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use log::{error, info};
+use protocol::{SignalEnum, UserCommand};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Document, ErrorEvent, HtmlLabelElement, MessageEvent, RtcPeerConnection, WebSocket};
+use web_sys::{
+    Document, ErrorEvent, Event, HtmlLabelElement, MessageEvent, RtcPeerConnection, WebSocket,
+};
 
 use crate::common::{handle_message_reply, AppState};
 
@@ -26,6 +29,11 @@ pub async fn open_web_socket(
     info!("Opening WS Connection");
 
     let ws = WebSocket::new(WS_IP_PORT)?;
+    let ws2 = ws.clone();
+
+    let onopen_callback = Closure::wrap(Box::new(move || {}) as Box<dyn FnMut()>);
+    ws.set_onopen(Some(onopen_callback.as_ref().unchecked_ref()));
+    onopen_callback.forget();
 
     ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
     let cloned_ws_ext = ws.clone();

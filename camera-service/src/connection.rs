@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use protocol::{SignalEnum, TankCommand, UserId};
 use webrtc::{
     api::{
         interceptor_registry::register_default_interceptors,
@@ -9,14 +10,17 @@ use webrtc::{
     interceptor::registry::Registry,
     media::Sample,
     peer_connection::{
-        configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
-        sdp::session_description::RTCSessionDescription, RTCPeerConnection,
+        configuration::RTCConfiguration,
+        offer_answer_options::{RTCAnswerOptions, RTCOfferOptions},
+        peer_connection_state::RTCPeerConnectionState,
+        sdp::{sdp_type::RTCSdpType, session_description::RTCSessionDescription},
+        RTCPeerConnection,
     },
     rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
     track::track_local::{track_local_static_sample::TrackLocalStaticSample, TrackLocal},
 };
 
-use crate::{camera::VideoPacket, prelude::*};
+use crate::{camera::VideoPacket, prelude::*, signaling::WebSocketCommand};
 
 #[derive(PartialEq, Eq)]
 pub enum ConnState {
@@ -29,6 +33,7 @@ pub async fn init_connection(
     counter: ConnectionState,
     frame_receiver: Receiver<VideoPacket>,
     webrtc_cmd_receiver: Receiver<WebRtcEnumCommand>,
+    ws_sender: Sender<WebSocketCommand>,
 ) -> anyhow::Result<()> {
     let mut m = MediaEngine::default();
     m.register_default_codecs()?;
@@ -107,7 +112,7 @@ pub async fn init_connection(
         let mut ticker = tokio::time::interval(Duration::from_millis(33));
         loop {
             if let Ok(frame) = frame_receiver.recv() {
-                video_track
+                let _ = video_track
                     .write_sample(&Sample {
                         data: Bytes::from(frame.data),
                         duration: Duration::from_secs(1),
@@ -123,11 +128,30 @@ pub async fn init_connection(
         loop {
             if let Ok(cmd) = webrtc_cmd_receiver.recv() {
                 match cmd {
-                    WebRtcEnumCommand::ReceiveIceHandshake(ice) => {
-                        let result = handle_ice(&ice, peer_connection.clone());
+                    WebRtcEnumCommand::ReceiveIceHandshake(id, data) => {
+                        let result = handle_ice(&data, peer_connection.clone()).await;
+                        dbg!(&result);
+                        if let Ok(ice) = result {
+                            info!("sending ice answer");
+                            let _ = ws_sender.send(WebSocketCommand::SendSignal(
+                                SignalEnum::TankCommand(TankCommand::IceAnswer(id, ice)),
+                            ));
+                        } else if let Err(er) = result {
+                            error!("{0}", er)
+                        }
                     }
                     WebRtcEnumCommand::CloseConn => {
-                        peer_connection.close().await;
+                        let _ = peer_connection.close().await;
+                    }
+                    WebRtcEnumCommand::ReceiveSdpOffer(id, data) => {
+                        let result =
+                            receive_sdp_offer_send_answer(peer_connection.clone(), data).await;
+                        if let Ok(answer) = result {
+                            info!("sending sdp answer");
+                            let _ = ws_sender.send(WebSocketCommand::SendSignal(
+                                SignalEnum::TankCommand(TankCommand::SdpAnswer(id, answer)),
+                            ));
+                        }
                     }
                 }
             }
@@ -137,12 +161,16 @@ pub async fn init_connection(
     Ok(())
 }
 
-async fn handle_ice(data: &str, conn: Arc<RTCPeerConnection>) -> Result<String> {
+type Rtc = Arc<RTCPeerConnection>;
+async fn handle_ice(data: &str, conn: Rtc) -> Result<String> {
+    info!("ender handle ice");
     let offer = serde_json::from_str::<RTCSessionDescription>(data)?;
 
+    info!("parsed offer ");
     // Set the remote SessionDescription
     conn.set_remote_description(offer).await?;
 
+    info!("set remote desc ");
     // Create an answer
     let answer = conn.create_answer(None).await?;
 
@@ -157,7 +185,6 @@ async fn handle_ice(data: &str, conn: Arc<RTCPeerConnection>) -> Result<String> 
     // in a production application you should exchange ICE Candidates via OnICECandidate
     let _ = gather_complete.recv().await;
 
-    // TODO: send desc to web socket
     if let Some(local_desc) = conn.local_description().await {
         let json_str = serde_json::to_string(&local_desc)?;
         Ok(json_str)
@@ -168,7 +195,44 @@ async fn handle_ice(data: &str, conn: Arc<RTCPeerConnection>) -> Result<String> 
     }
 }
 
+pub async fn receive_sdp_answer(peer_a: Rtc, answer_sdp: String) -> Result<()> {
+    warn!("SDP: Receive Answer {:?}", answer_sdp);
+
+    // Setting Remote Description
+    let ans = RTCSessionDescription::answer(answer_sdp)?;
+    peer_a.set_remote_description(ans).await?;
+    Ok(())
+}
+
+pub async fn receive_sdp_offer_send_answer(peer_b: Rtc, offer_sdp: String) -> Result<String> {
+    warn!("SDP: Video Offer Receive! {}", offer_sdp);
+
+    // Set Remote Description
+    let offer_obj = RTCSessionDescription::offer(offer_sdp)?;
+    peer_b.set_remote_description(offer_obj).await?;
+
+    // Create SDP Answer
+    let answer = peer_b
+        .create_answer(Some(RTCAnswerOptions::default()))
+        .await?;
+
+    peer_b.set_local_description(answer.clone()).await?;
+
+    info!("SDP: Sending Video Answer {:?}", answer);
+    Ok(answer.sdp)
+}
+
+pub async fn create_sdp_offer(peer_a: Rtc) -> Result<String> {
+    let offer = peer_a
+        .create_offer(Some(RTCOfferOptions::default()))
+        .await?;
+    peer_a.set_local_description(offer.clone()).await?;
+
+    info!("SDP: Sending Offer {:?}", offer.sdp);
+    Ok(offer.sdp)
+}
 pub enum WebRtcEnumCommand {
-    ReceiveIceHandshake(String),
+    ReceiveSdpOffer(UserId, String),
+    ReceiveIceHandshake(UserId, String),
     CloseConn,
 }

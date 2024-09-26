@@ -1,3 +1,5 @@
+use crate::ice::{self, received_new_ice_candidate};
+use crate::sdp::{receive_sdp_answer, receive_sdp_offer_send_answer};
 use crate::ui::*;
 use std::cell::RefCell;
 use std::convert::TryInto;
@@ -7,6 +9,7 @@ use js_sys::{Array, Object, Reflect};
 use log::{debug, error, info, warn};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue, UnwrapThrowExt};
+use web_sys::console::info;
 use web_sys::{
     Document, Element, HtmlButtonElement, HtmlVideoElement, MediaStream, MessageEvent,
     RtcConfiguration, RtcDataChannel, RtcDataChannelEvent, RtcIceConnectionState,
@@ -174,11 +177,38 @@ pub async fn handle_message_reply(
         // SignalEnum::SessionJoin(session_id) => {
         //     info!("{}", session_id.inner())
         // }
-        // SignalEnum::NewUser(user_id) => {
-        //     info!("New User Received ! {}", user_id.clone().inner());
-        //     let mut state = app_state.borrow_mut();
-        //     state.set_user_id(user_id);
-        // }
+        SignalEnum::Start => {
+            let signal = SignalEnum::UserCommand(UserCommand::Login);
+            match serde_json_wasm::to_string(&signal) {
+                Ok(x) => match websocket.send_with_str(&x) {
+                    Ok(_) => info!("Video Offer SignalEnum sent"),
+                    Err(err) => error!("Error sending Video Offer SignalEnum: {:?}", err),
+                },
+                Err(e) => {
+                    error!("Could not Serialize Video Offer {}", e);
+                }
+            };
+        }
+        SignalEnum::UserResponse(response) => match response {
+            UserMessage::LoginResponse(user_id) => {
+                info!("New User Received ! {}", user_id.clone().inner());
+                let mut state = app_state.borrow_mut();
+                state.set_user_id(user_id);
+            }
+            UserMessage::CameraListGetSuccess(tank_list) => {
+                for t in tank_list {
+                    info!("{0}", t.inner());
+                }
+            }
+            UserMessage::IceOfferAnswer(tank_id, data) => {
+                info!("received answer from {0}", tank_id.inner());
+                received_new_ice_candidate(data, peer_connection.clone());
+            }
+            UserMessage::SdpAnswer(tank_id, data) => {
+                info!("received sdp answer from {0}", tank_id.inner());
+                receive_sdp_offer_send_answer(peer_connection.clone(), data);
+            }
+        },
         // SignalEnum::ICEError(err, session_id) => {
         //     error!("ICEError! {}, {} ", err, session_id.inner());
         // }
@@ -316,12 +346,6 @@ pub async fn setup_listener(
         let ws_clone1 = ws_clone.clone();
         let rc_state_clone = rc_state_clone_internal;
 
-        // Setup ICE callbacks
-        // let res = setup_rtc_peer_connection_ice_callbacks(peer_b_clone, ws_clone1, rc_state_clone).await;
-        // if res.is_err() {
-        //     log::error!("Error Setting up ice callbacks {:?}", res.unwrap_err())
-        // }
-
         wasm_bindgen_futures::spawn_local(async move {
             let res =
                 setup_rtc_peer_connection_ice_callbacks(peer_b_clone, ws_clone1, rc_state_clone)
@@ -331,7 +355,7 @@ pub async fn setup_listener(
             }
         });
 
-        host_session(ws_clone);
+        // host_session(ws_clone);
     }) as Box<dyn FnMut()>);
 
     document
@@ -343,25 +367,6 @@ pub async fn setup_listener(
     btn_cb.forget();
 
     Ok(())
-}
-
-fn host_session(ws: WebSocket) {
-    info!("Sending SessionNew");
-    // let msg = SignalEnum::;
-    // let ser_msg: String = match serde_json_wasm::to_string(&msg) {
-    //     Ok(x) => x,
-    //     Err(e) => {
-    //         error!("Could not serialize SessionNew {}", e);
-    //         return;
-    //     }
-    // };
-    //
-    // match ws.send_with_str(&ser_msg) {
-    //     Ok(_) => {}
-    //     Err(e) => {
-    //         error!("Error Sending SessionNew {:?}", e);
-    //     }
-    // }
 }
 
 fn peer_a_dc_on_message(dc: RtcDataChannel) -> Closure<dyn FnMut(MessageEvent)> {
@@ -402,16 +407,8 @@ pub async fn setup_initiator(
     let btn_cb = Closure::wrap(Box::new(move || {
         let ws_clone = ws_clone_external.clone();
         let peer_a_clone = peer_a_clone_external.clone();
+        let peer_a_clone2 = peer_a_clone.clone();
         let rc_state_clone = rc_state_clone_ext.clone();
-
-        // let res =
-        //     setup_rtc_peer_connection_ice_callbacks(peer_a_clone, ws_clone.clone(), rc_state_clone);
-        // if res.is_err() {
-        //     error!(
-        //         "Error Setting up RTCPeerConnection ICE Callbacks {:?}",
-        //         res.unwrap_err()
-        //     )
-        // }
 
         let ws_clone1 = ws_clone.clone();
         wasm_bindgen_futures::spawn_local(async move {
@@ -421,9 +418,8 @@ pub async fn setup_initiator(
             if res.is_err() {
                 log::error!("Error Setting up ice callbacks {:?}", res.unwrap_err())
             }
+            try_connect_to_session(peer_a_clone2, ws_clone).await;
         });
-
-        try_connect_to_session(ws_clone);
     }) as Box<dyn FnMut()>);
     document
         .get_element_by_id("connect_to_session")
@@ -479,26 +475,27 @@ fn rtc_ice_state_change(
     }) as Box<dyn FnMut()>)
 }
 
-fn try_connect_to_session(ws: WebSocket) {
+async fn try_connect_to_session(rtc_conn: RtcPeerConnection, ws: WebSocket) {
     let session_id_string = get_session_id_from_input();
-    let session_id = SessionID::new(session_id_string);
-    // let msg = SignalEnum::SessionJoin(session_id);
-    // let ser_msg: String = match serde_json_wasm::to_string(&msg) {
-    //     Ok(x) => x,
-    //     Err(e) => {
-    //         error!("Could not serialize SessionJoin {}", e);
-    //         return;
-    //     }
-    // };
-    // match ws.send_with_str(&ser_msg) {
-    //     Ok(_) => {}
-    //     Err(e) => {
-    //         error!("Error Sending SessionJoin {:?}", e);
-    //     }
-    // }
+    let session_id = TankId::new(session_id_string);
+    let sdp_offer = create_sdp_offer(rtc_conn).await.unwrap_throw();
+    let msg = SignalEnum::UserCommand(UserCommand::SdpOffer(session_id, sdp_offer));
+    let ser_msg: String = match serde_json_wasm::to_string(&msg) {
+        Ok(x) => x,
+        Err(e) => {
+            error!("Could not serialize SessionJoin {}", e);
+            return;
+        }
+    };
+    match ws.send_with_str(&ser_msg) {
+        Ok(_) => {}
+        Err(e) => {
+            error!("Error Sending SessionJoin {:?}", e);
+        }
+    }
 }
 
-async fn send_video_offer(rtc_conn: RtcPeerConnection, ws: WebSocket, session_id: SessionID) {
+async fn send_video_offer(rtc_conn: RtcPeerConnection, ws: WebSocket) {
     //  NB !!!
     // Need to setup Media Stream BEFORE sending SDP offer
     // SDP offer Contains information about the Video Streaming technologies available to this and the other browser

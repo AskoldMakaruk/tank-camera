@@ -1,4 +1,4 @@
-use futures::{StreamExt, TryStreamExt};
+use futures::{SinkExt, StreamExt, TryStreamExt};
 use handler::{handle_operator_message, handle_tank_message};
 use std::any;
 use std::fs::File;
@@ -36,7 +36,7 @@ fn setup_logging() -> Result<(), SetLoggerError> {
     ])
 }
 
-use protocol::{ProtoId, SignalEnum, TankId, UserId, UserResponse};
+use protocol::{ProtoId, SignalEnum, TankId, UserId, UserMessage};
 use std::net::UdpSocket;
 
 pub fn get_local_ip() -> Option<String> {
@@ -76,8 +76,9 @@ async fn handle_connection(raw_stream: TcpStream, addr: SocketAddr) {
     // peer map
     let (tx, rx) = unbounded();
     state::insert_peer(addr, tx.clone());
+    let _ = state::send(&addr, SignalEnum::Start);
 
-    let mut id_mutex = Arc::new(Mutex::new(Option::<ProtoId>::None));
+    let id_mutex = Arc::new(Mutex::new(Option::<ProtoId>::None));
 
     let broadcast_incoming = incoming
         .try_filter(|msg| {
@@ -95,10 +96,10 @@ async fn handle_connection(raw_stream: TcpStream, addr: SocketAddr) {
             if let Ok(signal) = serde_json::from_str::<SignalEnum>(&message) {
                 if signal.is_login() && id_mutex.lock().map(|x| x.is_none()).unwrap_or(false) {
                     if signal.is_tank() {
-                        let tank_id = TankId::new(generate_id(10));
+                        let tank_id = TankId::new("123".to_string());
                         state::insert_tank(addr, tank_id.clone());
 
-                        let msg = SignalEnum::TankResponse(protocol::TankResponse::LoginResponse(
+                        let msg = SignalEnum::TankMessage(protocol::TankMessage::LoginResponse(
                             tank_id.clone(),
                         ));
                         state::send_message_to_tank(&tank_id, msg);
@@ -110,7 +111,7 @@ async fn handle_connection(raw_stream: TcpStream, addr: SocketAddr) {
                         state::insert_user(addr, user_id.clone());
 
                         let msg =
-                            SignalEnum::UserResponse(UserResponse::LoginResponse(user_id.clone()));
+                            SignalEnum::UserResponse(UserMessage::LoginResponse(user_id.clone()));
                         state::send_message_to_operator(&user_id, msg);
                         if let Ok(mut x) = id_mutex.lock() {
                             *x = Some(ProtoId::User(user_id));
@@ -120,14 +121,14 @@ async fn handle_connection(raw_stream: TcpStream, addr: SocketAddr) {
                     let result: anyhow::Result<()> = match signal {
                         SignalEnum::TankCommand(cmd) => {
                             if let Ok(Some(ProtoId::Tank(tank_id))) = id_mutex.lock().as_deref() {
-                                handle_tank_message(addr, tank_id.clone(), cmd)
+                                handle_tank_message(tank_id.clone(), cmd)
                             } else {
                                 Ok(())
                             }
                         }
-                        SignalEnum::OperatorCommand(cmd) => {
+                        SignalEnum::UserCommand(cmd) => {
                             if let Ok(Some(ProtoId::User(user_id))) = id_mutex.lock().as_deref() {
-                                handle_operator_message(addr, user_id.clone(), cmd)
+                                handle_operator_message(user_id.clone(), cmd)
                             } else {
                                 Ok(())
                             }
