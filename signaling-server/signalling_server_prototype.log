@@ -1,4 +1,0 @@
-10:47:59 [INFO] Listening on: 127.0.0.1:9002
-10:48:05 [INFO] Incoming TCP connection from: 127.0.0.1:47150
-10:48:05 [DEBUG] (33) tungstenite::handshake::server: Server handshake done.
-10:48:05 [INFO] WebSocket connection established: 127.0.0.1:47150
