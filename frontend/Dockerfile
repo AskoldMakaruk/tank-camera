@@ -9,8 +9,9 @@ EXPOSE 9000
 COPY --from=tools /usr/local/cargo/bin/microserver /bin/microserver
 COPY --from=tools /usr/local/cargo/bin/wasm-pack /bin/wasm-pack
 
-COPY ./ ./
-RUN /bin/wasm-pack build --target web --out-name wasm_client
+COPY ../protocol/ ./protocol
+COPY ./ ./src
+RUN /bin/wasm-pack build --target web --out-name wasm_client ./src/Cargo.toml
 
 
 CMD ["/bin/microserver", "--port", "9000"]
