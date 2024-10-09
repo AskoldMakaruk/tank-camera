@@ -9,7 +9,9 @@ EXPOSE 9000
 COPY --from=tools /usr/local/cargo/bin/microserver /bin/microserver
 COPY --from=tools /usr/local/cargo/bin/wasm-pack /bin/wasm-pack
 
-COPY ./ ./
+COPY ./frontend ./frontend
+COPY ./protocol ./protocol
+
 RUN /bin/wasm-pack build --target web --out-name wasm_client ./frontend/Cargo.toml
 
 
