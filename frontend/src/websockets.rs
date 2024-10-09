@@ -20,7 +20,7 @@ use crate::common::{handle_message_reply, AppState};
 //    \  /\  /    |  __/ | |_) |    ____) | | (_) | | (__  |   <  |  __/ | |_
 //     \/  \/      \___| |_.__/    |_____/   \___/   \___| |_|\_\  \___|  \__|
 
-const WS_IP_PORT: &str = "ws://127.0.0.1:9002";
+const WS_IP_PORT: &str = "ws://64.226.89.43:9002";
 
 pub async fn open_web_socket(
     rtc_conn: RtcPeerConnection,
@@ -29,7 +29,6 @@ pub async fn open_web_socket(
     info!("Opening WS Connection");
 
     let ws = WebSocket::new(WS_IP_PORT)?;
-    let ws2 = ws.clone();
 
     let onopen_callback = Closure::wrap(Box::new(move || {}) as Box<dyn FnMut()>);
     ws.set_onopen(Some(onopen_callback.as_ref().unchecked_ref()));
