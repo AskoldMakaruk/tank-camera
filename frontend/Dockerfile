@@ -4,14 +4,13 @@ RUN cargo install wasm-pack
 
 RUN cargo install microserver
 
-FROM tools as result
+FROM tools AS result
 EXPOSE 9000
 COPY --from=tools /usr/local/cargo/bin/microserver /bin/microserver
 COPY --from=tools /usr/local/cargo/bin/wasm-pack /bin/wasm-pack
 
-COPY ../protocol/ ./protocol
-COPY ./ ./src
-RUN /bin/wasm-pack build --target web --out-name wasm_client ./src/Cargo.toml
+COPY ./ ./
+RUN /bin/wasm-pack build --target web --out-name wasm_client ./frontend/Cargo.toml
 
 
 CMD ["/bin/microserver", "--port", "9000"]
