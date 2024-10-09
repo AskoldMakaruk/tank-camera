@@ -358,13 +358,13 @@ pub async fn setup_listener(
         // host_session(ws_clone);
     }) as Box<dyn FnMut()>);
 
-    document
-        .get_element_by_id("start_session")
-        .expect("should have start_session on the page")
-        .dyn_ref::<HtmlButtonElement>()
-        .expect("#Button should be a be an `HtmlButtonElement`")
-        .set_onclick(Some(btn_cb.as_ref().unchecked_ref()));
-    btn_cb.forget();
+    // document
+    //     .get_element_by_id("start_session")
+    //     .expect("should have start_session on the page")
+    //     .dyn_ref::<HtmlButtonElement>()
+    //     .expect("#Button should be a be an `HtmlButtonElement`")
+    //     .set_onclick(Some(btn_cb.as_ref().unchecked_ref()));
+    // btn_cb.forget();
 
     Ok(())
 }
