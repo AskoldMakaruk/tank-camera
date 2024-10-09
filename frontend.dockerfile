@@ -12,7 +12,9 @@ COPY --from=tools /usr/local/cargo/bin/wasm-pack /bin/wasm-pack
 COPY ./frontend/ ./frontend/
 COPY ./protocol/ ./protocol/
 
-RUN ls && ls frontend && ls protocol
+RUN ls 
+RUN ls frontend
+RUN ls protocol
 
 RUN /bin/wasm-pack build --target web --out-name wasm_client ./frontend/Cargo.toml
 
