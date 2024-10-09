@@ -3,9 +3,9 @@ FROM rust:1.81 AS build
 COPY ./signaling-server/ ./server/
 COPY ./protocol/ ./protocol/
 
-RUN cargo build --release --manifest-path signaling-server/Cargo.toml
+RUN cargo build --release --manifest-path server/Cargo.toml
 
-FROM build as result
+FROM build AS result
 WORKDIR ./app
 
 COPY --from=build /server/taget/release/signaling-server signaling-server
