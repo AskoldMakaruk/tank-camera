@@ -6,8 +6,8 @@ COPY ./protocol/ ./protocol/
 RUN cargo build --release --manifest-path server/Cargo.toml
 
 FROM build AS result
-WORKDIR ./app
+WORKDIR /app
 
-COPY --from=build /server/taget/release/signaling-server signaling-server
+COPY --from=build /server/target/release/signaling-server signaling-server
 
 CMD ["./signaling-server"]
