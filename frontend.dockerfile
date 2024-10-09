@@ -16,7 +16,7 @@ RUN ls
 RUN ls frontend
 RUN ls protocol
 
-RUN /bin/wasm-pack build --target web --out-name wasm_client frontend/Cargo.toml
+RUN /bin/wasm-pack build --target web --out-name wasm_client /frontend/Cargo.toml
 
 
 CMD ["/bin/microserver", "--port", "9000"]
